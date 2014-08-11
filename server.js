@@ -1,54 +1,93 @@
-var express = require('express');
 var Dockerode = require('dockerode');
 var docker = new Dockerode({
   socketPath: '/var/run/docker.sock'
 });
 var emptyPort = require('empty-port');
-var async = require('async');
+var koa = require('koa');
+var serve = require('koa-static');
+var thunkify = require('thunkify');
+var request = require('co-request');
+var httpProxy = require('http-proxy');
 
-var app = express();
+var app = koa();
+emptyPort = thunkify(emptyPort);
+var proxy = httpProxy.createProxyServer({});
 
-app.use(express.static('./public'));
+proxy.on('error', function(e) {
+  console.error(e);
+});
 
-app.get('/:module', function (req, res, next) {
-  var container;
-  var port;
-  async.waterfall([
-    function createContainer (done) {
-       docker.createContainer({
-         Image: 'nodeschool/' + req.params.module,
-         Hostname: req.params.module,
-         Tty: true,
-         ExposedPorts: {
-           "80/tcp": {}
-         }
-       }, done);
-    },
-    function findPort (c, done) {
-      container = c;
-      emptyPort({}, done);
-    },
-    function startContainer (p, done) {
-      console.log('port', p);
-      port = p.toString();
-      container.start({
+app.use(function *(next) {
+  var host = this.request.headers.host;
+  if (host.split('.').length > 2) {
+    var name = host.split('.').shift();
+    var port;
+    var container = docker.getContainer(name);
+    container.inspect = thunkify(container.inspect);
+    var info = yield container.inspect();
+    if (info.State.Running) {
+      port = info.HostConfig.PortBindings['80/tcp'][0].HostPort;
+    } else {
+      port = yield emptyPort({});
+      container.start = thunkify(container.start);
+      yield(container.start({
         "PortBindings": {
           "80/tcp": [{
-            "HostPort": port
+            "HostPort": port.toString()
           }]
         }
-      }, done);
-    },
-    function delay (data, done) {
-      setTimeout(done, 500);
+      }));
     }
-  ], function (err) {
+    var count = 1000;
+    while (count-- > 0) {
+      try {
+        var result = yield request('http://localhost:' + port);
+        break;
+      } catch (error) {}
+    }
+    if (count < 1) {
+      return next;
+    }
+    var web = proxy.web(this.req, this.res, {
+      target: 'http://localhost:' + port
+    });
+    this.respond = false;
+  } else {
+    yield next;
+  }
+});
+
+app.use(serve('public'));
+
+app.use(function *() {
+  var image = this.request.url.replace('/', '');
+  var container = yield docker.createContainer({
+    Image: 'nodeschool/' + image,
+    Hostname: image,
+    Tty: true,
+    ExposedPorts: {
+      "80/tcp": {}
+    }
+  });
+  container.inspect = thunkify(container.inspect);
+  var info = yield container.inspect();
+  return this.response.redirect('http://' + info.Name + '.generalhenry.com');
+});
+
+var server = app.listen(80);
+
+server.on('upgrade', function (req, socket, head) {
+  var name = req.headers.host.split('.').shift();
+  var container = docker.getContainer(name);
+  container.inspect(function (err, info) {
     if (err) {
-      next(err);
+      console.error(err);
+      return socket.end();
     } else {
-      res.redirect('http://generalhenry.com:' + port);
+      var port = info.HostConfig.PortBindings['80/tcp'][0].HostPort;
+      proxy.ws(req, socket, head, {
+        target: 'http://localhost:' + port
+      });
     }
   });
 });
-
-app.listen(80);
