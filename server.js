@@ -12,6 +12,7 @@ var httpProxy = require('http-proxy');
 var app = koa();
 emptyPort = thunkify(emptyPort);
 var proxy = httpProxy.createProxyServer({});
+docker.createContainer = thunkify(docker.createContainer);
 
 proxy.on('error', function(e) {
   console.error(e);
