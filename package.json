@@ -4,15 +4,18 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node --harmony server.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "redis": "~0.10.3",
-    "express": "~4.5.0",
+    "co-request": "^0.2.0",
     "dockerode": "~2.0.0",
-    "async": "~0.9.0",
-    "empty-port": "0.0.1"
+    "empty-port": "0.0.1",
+    "http-proxy": "^1.2.0",
+    "koa": "^0.9.0",
+    "koa-static": "^1.4.6",
+    "thunkify": "^2.1.2"
   }
 }
