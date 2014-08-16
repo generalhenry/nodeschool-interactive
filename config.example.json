@@ -1,0 +1,9 @@
+{
+  "dockerOptions": {
+    "socketPath": "/var/run/docker.sock"
+  },
+  "hostName": "generalhenry.com",
+  "dockerHost": "http://localhost:",
+  "port": 80,
+  "imagePrefix": "nodeschool/"
+}

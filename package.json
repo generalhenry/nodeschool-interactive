@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node --harmony server.js"
+    "start": "node --harmony server.js",
+    "postinstall": "[ ! -f config.json ] && cp config.example.json config.json"
   },
   "author": "",
   "license": "ISC",

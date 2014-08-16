@@ -1,7 +1,6 @@
+var config = require('./config');
 var Dockerode = require('dockerode');
-var docker = new Dockerode({
-  socketPath: '/var/run/docker.sock'
-});
+var docker = new Dockerode(config.dockerOptions);
 var emptyPort = require('empty-port');
 var koa = require('koa');
 var serve = require('koa-static');
@@ -25,7 +24,12 @@ app.use(function *(next) {
     var port;
     var container = docker.getContainer(name);
     container.inspect = thunkify(container.inspect);
-    var info = yield container.inspect();
+    try {
+      var info = yield container.inspect();
+    } catch (e) {
+      console.error(e);
+      return next;
+    }
     if (info.State.Running) {
       port = info.HostConfig.PortBindings['80/tcp'][0].HostPort;
     } else {
@@ -42,7 +46,7 @@ app.use(function *(next) {
     var count = 1000;
     while (count-- > 0) {
       try {
-        var result = yield request('http://localhost:' + port);
+        var result = yield request(config.dockerHost + port);
         break;
       } catch (error) {}
     }
@@ -50,7 +54,7 @@ app.use(function *(next) {
       return next;
     }
     var web = proxy.web(this.req, this.res, {
-      target: 'http://localhost:' + port
+      target: config.dockerHost + port
     });
     this.respond = false;
   } else {
@@ -60,19 +64,24 @@ app.use(function *(next) {
 
 app.use(serve('public'));
 
-app.use(function *() {
+app.use(function *(next) {
   var image = this.request.url.replace('/', '');
-  var container = yield docker.createContainer({
-    Image: 'nodeschool/' + image,
-    Hostname: image,
-    Tty: true,
-    ExposedPorts: {
-      "80/tcp": {}
-    }
-  });
+  try {
+    var container = yield docker.createContainer({
+      Image: config.imagePrefix + image,
+      Hostname: image,
+      Tty: true,
+      ExposedPorts: {
+        "80/tcp": {}
+      }
+    });
+  } catch (e) {
+    console.error(e);
+    return next;
+  }
   container.inspect = thunkify(container.inspect);
   var info = yield container.inspect();
-  return this.response.redirect('http://' + info.Name + '.generalhenry.com');
+  return this.response.redirect('http://' + info.Name + '.' + config.hostName);
 });
 
 var server = app.listen(80);
@@ -87,7 +96,7 @@ server.on('upgrade', function (req, socket, head) {
     } else {
       var port = info.HostConfig.PortBindings['80/tcp'][0].HostPort;
       proxy.ws(req, socket, head, {
-        target: 'http://localhost:' + port
+        target: config.dockerHost + port
       });
     }
   });
