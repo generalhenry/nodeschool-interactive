@@ -35,13 +35,13 @@ app.use(function *(next) {
     } else {
       port = yield emptyPort({});
       container.start = thunkify(container.start);
-      yield(container.start({
+      yield container.start({
         "PortBindings": {
           "80/tcp": [{
             "HostPort": port.toString()
           }]
         }
-      }));
+      });
     }
     var count = 1000;
     while (count-- > 0) {
@@ -79,9 +79,32 @@ app.use(function *(next) {
     console.error(e);
     return next;
   }
-  container.inspect = thunkify(container.inspect);
-  var info = yield container.inspect();
-  return this.response.redirect('http://' + info.Name + '.' + config.hostName);
+  if (config.server) {
+    container.inspect = thunkify(container.inspect);
+    var info = yield container.inspect();
+    return this.response.redirect('http://' + info.Name + '.' + config.hostName);
+  } else {
+    var port = yield emptyPort({});
+    container.start = thunkify(container.start);
+    yield container.start({
+      "PortBindings": {
+        "80/tcp": [{
+          "HostPort": port.toString()
+        }]
+      }
+    });
+    var count = 1000;
+    while (count-- > 0) {
+      try {
+        var result = yield request(config.dockerHost + port);
+        break;
+      } catch (error) {}
+    }
+    if (count < 1) {
+      return next;
+    }
+    return this.response.redirect('http://' + config.hostName + ':' + port);
+  }
 });
 
 var server = app.listen(80);
