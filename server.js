@@ -5,15 +5,20 @@ var emptyPort = require('empty-port');
 var koa = require('koa');
 var serve = require('koa-static');
 var thunkify = require('thunkify');
-var request = require('co-request');
 var httpProxy = require('http-proxy');
+var mkdirp = require('mkdirp');
+var rimraf = require('rimraf');
+var http = require('http');
 
 var app = koa();
 emptyPort = thunkify(emptyPort);
 var proxy = httpProxy.createProxyServer({});
 docker.createContainer = thunkify(docker.createContainer);
+mkdirp = thunkify(mkdirp);
+rimraf = thunkify(rimraf);
 
 proxy.on('error', function(e) {
+  console.log('proxy err');
   console.error(e);
 });
 
@@ -30,31 +35,20 @@ app.use(function *(next) {
       console.error(e);
       return next;
     }
-    if (info.State.Running) {
-      port = info.HostConfig.PortBindings['80/tcp'][0].HostPort;
-    } else {
-      port = yield emptyPort({});
-      container.start = thunkify(container.start);
-      yield container.start({
-        "PortBindings": {
-          "80/tcp": [{
-            "HostPort": port.toString()
-          }]
-        }
-      });
-    }
-    var count = 1000;
-    while (count-- > 0) {
+    if (!info.State.Running) {
       try {
-        var result = yield request(config.dockerHost + port);
-        break;
-      } catch (error) {}
+        yield startContainer(container);
+      } catch (err) {
+        console.error('fail', err);
+        this.body = 'fail';
+        return false;
+      }
     }
-    if (count < 1) {
-      return next;
-    }
-    var web = proxy.web(this.req, this.res, {
-      target: config.dockerHost + port
+    var socketPath = __dirname + '/binds/' + container.id + '/proxy'; 
+    proxy.web(this.req, this.res, {
+      target: {
+        socketPath: socketPath
+      }
     });
     this.respond = false;
   } else {
@@ -71,8 +65,8 @@ app.use(function *(next) {
       Image: config.imagePrefix + image,
       Hostname: image,
       Tty: true,
-      ExposedPorts: {
-        "80/tcp": {}
+      Volumes: {
+        '/var/run': {}
       }
     });
   } catch (e) {
@@ -84,43 +78,67 @@ app.use(function *(next) {
     var info = yield container.inspect();
     return this.response.redirect('http://' + info.Name + '.' + config.hostName);
   } else {
-    var port = yield emptyPort({});
-    container.start = thunkify(container.start);
-    yield container.start({
-      "PortBindings": {
-        "80/tcp": [{
-          "HostPort": port.toString()
-        }]
-      }
-    });
-    var count = 1000;
-    while (count-- > 0) {
-      try {
-        var result = yield request(config.dockerHost + port);
-        break;
-      } catch (error) {}
-    }
-    if (count < 1) {
-      return next;
-    }
+    var port = yield startContainer(container);
     return this.response.redirect('http://' + config.hostName + ':' + port);
   }
 });
 
+function *startContainer (container) {
+  var port = yield emptyPort({});
+  var folder = __dirname + '/binds/' + container.id;
+  yield mkdirp(folder);
+  yield rimraf(folder + '/*');
+  container.start = thunkify(container.start);
+  yield container.start({
+    Binds: [folder + ':/var/run']
+  });
+  var count = 100000;
+  while (count-- > 0) {
+    try {
+      var result = yield get({ socketPath: folder + '/proxy' });
+      console.log('connected');
+      break;
+    } catch (error) {
+      process.stdout.write('[');
+    }
+  }
+  if (count < 1) {
+    throw new Error('Could not connect to container');
+  }
+  return port;
+}
+
+function get (options) {
+  return function (cb) {
+    setTimeout(function () {
+      var req = http.get(options);
+      req.on('error', cb);
+      req.on('response', function (res) {
+        res.on('error', cb);
+        res.on('data', function () {});
+        res.on('end', cb);
+      });
+    }, 50);
+  };
+}
+
 var server = app.listen(80);
+
+server.on('error', function (err) {
+  console.log('server error');
+  console.error(err);
+});
 
 server.on('upgrade', function (req, socket, head) {
   var name = req.headers.host.split('.').shift();
-  var container = docker.getContainer(name);
-  container.inspect(function (err, info) {
-    if (err) {
-      console.error(err);
-      return socket.end();
-    } else {
-      var port = info.HostConfig.PortBindings['80/tcp'][0].HostPort;
-      proxy.ws(req, socket, head, {
-        target: config.dockerHost + port
-      });
+  var socketPath = __dirname + '/binds/' + name + '/proxy';
+  proxy.ws(req, socket, head, {
+    target: {
+      socketPath: socketPath     
     }
+  });
+  req.on('error', function (err) {
+    console.log('req');
+    console.error(err);
   });
 });
