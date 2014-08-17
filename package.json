@@ -12,7 +12,6 @@
   "license": "ISC",
   "dependencies": {
     "co-request": "^0.2.0",
-    "co-sleep": "0.0.1",
     "dockerode": "~2.0.0",
     "empty-port": "0.0.1",
     "http-proxy": "^1.2.0",
