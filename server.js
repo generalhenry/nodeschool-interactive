@@ -24,6 +24,7 @@ proxy.on('error', function(e) {
 
 app.use(function *(next) {
   var host = this.request.headers.host;
+  console.log(this);
   if (host.split('.').length > 2) {
     var name = host.split('.').shift();
     var port;
@@ -43,6 +44,9 @@ app.use(function *(next) {
         this.body = 'fail';
         return false;
       }
+    }
+    if (info.State.Paused) {
+      yield unpauseContainer(container);
     }
     var socketPath = __dirname + '/binds/' + container.id + '/proxy'; 
     proxy.web(this.req, this.res, {
@@ -92,7 +96,34 @@ function *startContainer (container) {
   yield container.start({
     Binds: [folder + ':/var/run']
   });
-  var count = 100000;
+  yield waitForPort(folder);
+  return port;
+}
+
+function *unpauseContainer (container) {
+  container.unpause = function () {
+    var self = this;
+    return function (cb) {
+      var opts = {
+        path: '/containers/' + self.id + '/unpause',
+        method: 'POST',
+        statusCodes: {
+          204: true,
+          404: "no such container",
+          500: "server error"
+        }
+      };
+      self.modem.dial(opts, function (err, data) {
+        cb(err, data);
+      });
+    };
+  };
+  yield container.unpause();
+  yield waitForPort(__dirname + '/binds/' + container.id);
+}
+
+function *waitForPort (folder) {
+  var count = 1000;
   while (count-- > 0) {
     try {
       var result = yield get({ socketPath: folder + '/proxy' });
@@ -105,7 +136,6 @@ function *startContainer (container) {
   if (count < 1) {
     throw new Error('Could not connect to container');
   }
-  return port;
 }
 
 function get (options) {
@@ -122,23 +152,28 @@ function get (options) {
   };
 }
 
-var server = app.listen(80);
+var portList = [80, 12491, 12492];
 
-server.on('error', function (err) {
-  console.log('server error');
-  console.error(err);
-});
+portList.forEach(function (port) {
+  var server = http.createServer(app.callback());
+  server.listen(port); 
 
-server.on('upgrade', function (req, socket, head) {
-  var name = req.headers.host.split('.').shift();
-  var socketPath = __dirname + '/binds/' + name + '/proxy';
-  proxy.ws(req, socket, head, {
-    target: {
-      socketPath: socketPath     
-    }
-  });
-  req.on('error', function (err) {
-    console.log('req');
+  server.on('error', function (err) {
+    console.log('server error');
     console.error(err);
+  });
+
+  server.on('upgrade', function (req, socket, head) {
+    var name = req.headers.host.split('.').shift();
+    var socketPath = __dirname + '/binds/' + name + '/proxy';
+    proxy.ws(req, socket, head, {
+      target: {
+        socketPath: socketPath     
+      }
+    });
+    req.on('error', function (err) {
+      console.log('req');
+      console.error(err);
+    });
   });
 });
