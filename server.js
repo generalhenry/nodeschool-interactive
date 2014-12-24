@@ -33,10 +33,10 @@ function handleUpgrade (req, socket, head) {
       }
     });
     req.on('error', handleRequestErrors);
-  }
-
-  function handleRequestErrors (err) {
-    console.log('websocket request error', 'name:', name);
-    console.error(err);
+    
+    function handleRequestErrors (err) {
+      console.log('websocket request error', 'name:', name);
+      console.error(err);
+    }
   }
 }
