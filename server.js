@@ -31,9 +31,6 @@ function handleUpgrade (req, socket, head) {
       target: {
         socketPath: socketPath     
       }
-    }).on('error', function(err) {
-      console.log('ws proxy error');
-      console.error(err);
     });
     req.on('error', handleRequestErrors);
 
