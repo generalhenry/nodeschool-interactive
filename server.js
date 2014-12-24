@@ -31,7 +31,7 @@ function handleUpgrade (req, socket, head) {
       target: {
         socketPath: socketPath     
       }
-    });
+    }, handleRequestErrors);
     req.on('error', handleRequestErrors);
 
     function handleRequestErrors (err) {
