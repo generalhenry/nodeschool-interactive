@@ -25,7 +25,7 @@ function handleUpgrade (req, socket, head) {
   // if subdomain
   if (host.split('.').length > 2) {
     var name = host.split('.').shift();
-    var socketPath = path.join(__dirname, 'binds', name, 'proxy');
+    var socketPath = path.join(__dirname, '../binds', name, 'proxy');
 
     proxy.ws(req, socket, head, {
       target: {
@@ -33,7 +33,7 @@ function handleUpgrade (req, socket, head) {
       }
     });
     req.on('error', handleRequestErrors);
-    
+
     function handleRequestErrors (err) {
       console.log('websocket request error', 'name:', name);
       console.error(err);
