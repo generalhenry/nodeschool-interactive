@@ -35,7 +35,10 @@ function handleUpgrade (req, socket, head) {
     req.on('error', handleRequestErrors);
 
     function handleRequestErrors (err) {
-      console.log('websocket request error', 'name:', name);
+      console.log('websocket request error', {
+        name: name,
+        socketPath: socketPath
+      });
       console.error(err);
     }
   }
