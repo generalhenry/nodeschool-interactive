@@ -3,8 +3,6 @@
     "socketPath": "/var/run/docker.sock"
   },
   "hostName": "generalhenry.com",
-  "dockerHost": "http://localhost:",
-  "port": 80,
-  "imagePrefix": "nodeschool/",
-  "server": true
+  "portList": [80, 2000, 3000, 4000, 5000, 8000, 8080, 12491, 12492],
+  "imagePrefix": "nodeschool/"
 }
